@@ -129,9 +129,10 @@ async function showMenus(ctx: Context) {
 const userSessions = new Map<
   string,
   {
-    awaitingFeedback: boolean;
+    awaitingFeedback?: boolean;
     feedbackType?: "general" | "hours_mistake";
     selectedDate?: Date;
+    awaitingHoursInput?: { workerHoursId: number };
   }
 >();
 
@@ -276,6 +277,64 @@ export async function botSetup() {
     console.log("text:", text);
 
     const session = userSessions.get(telegramId);
+    if (session?.awaitingHoursInput) {
+      const user = await userRepo.findOne({ where: { telegramId } });
+      if (!user) {
+        userSessions.delete(telegramId);
+        await safeSendMessage(
+          ctx,
+          "Сначала вам нужно привязать аккаунт. Напишите /start."
+        );
+        return;
+      }
+
+      const hours = parseFloat(text.replace(",", "."));
+      if (Number.isNaN(hours)) {
+        await safeSendMessage(ctx, "Пожалуйста, введите число часов.");
+        return;
+      }
+
+      const workerHours = await workerHoursRepo.findOne({
+        where: { id: session.awaitingHoursInput.workerHoursId },
+      });
+
+      if (!workerHours) {
+        userSessions.delete(telegramId);
+        await safeSendMessage(ctx, "Запись рабочих часов не найдена.");
+        return;
+      }
+
+      const feedback = new Feedback();
+      feedback.userId = user.id;
+      feedback.workerHoursId = workerHours.id;
+      feedback.message = `Пользователь указал правильное количество часов: ${hours}`;
+      feedback.telegramUserId = telegramId;
+      feedback.adminNotified = true;
+      feedback.action = FeedbackAction.INCORRECT_TIME;
+
+      await feedbackRepo.save(feedback);
+
+      global.io.emit("newFeedback", {
+        id: feedback.id,
+        userName: user.name,
+        userPosition: user.position,
+        message: feedback.message,
+        hours: workerHours.hours,
+        requestedHours: hours,
+        date: workerHours.date,
+        action: FeedbackAction.INCORRECT_TIME,
+        createdAt: feedback.createdAt,
+      });
+
+      userSessions.delete(telegramId);
+      await safeSendMessage(
+        ctx,
+        "Ваш запрос отправлен администраторам. Спасибо!"
+      );
+      await showMenus(ctx);
+      return;
+    }
+
     if (session?.awaitingFeedback) {
       const user = await userRepo.findOne({ where: { telegramId } });
       if (!user) {
@@ -291,9 +350,9 @@ export async function botSetup() {
       const feedback = new Feedback();
       feedback.userId = user.id;
       feedback.workerHoursId = 0; // General feedback, not tied to specific hours
-      feedback.message = `Сообщение от ${user.name} (${
-        ctx.from.first_name || ""
-      } ${ctx.from.last_name || ""}): ${text}`;
+      feedback.message = `Сообщение от ${user.name} (${ 
+        ctx.from?.first_name || ""
+      } ${ctx.from?.last_name || ""}): ${text}`;
       feedback.telegramUserId = telegramId;
       feedback.adminNotified = true;
       feedback.action =
@@ -695,35 +754,12 @@ export async function botSetup() {
       }
 
       if (action === "incorrect") {
-        const feedback = new Feedback();
-        feedback.userId = user.id;
-        feedback.workerHoursId = workerHours.id;
-        feedback.message = `${ctx.from.first_name || user.id} ${
-          ctx.from.last_name || ""
-        }, https://t.me/${
-          ctx.from.username || ""
-        } Неверно рабочих часов ${new Date().toISOString()}`;
-        feedback.telegramUserId = telegramId;
-        feedback.adminNotified = true;
-        feedback.action = FeedbackAction.INCORRECT_TIME;
-
-        await feedbackRepo.save(feedback);
-
-        // Notify admin via socket.io
-        global.io.emit("newFeedback", {
-          id: feedback.id,
-          userName: user.name,
-          userPosition: user.position,
-          message: feedback.message,
-          hours: workerHours.hours,
-          date: workerHours.date,
-          action: FeedbackAction.INCORRECT_TIME,
-          createdAt: feedback.createdAt,
+        userSessions.set(telegramId, {
+          awaitingHoursInput: { workerHoursId: workerHours.id },
         });
-
         await safeSendMessage(
           ctx,
-          "Ваш отзыв получен и передан администраторам. Спасибо!"
+          "Пожалуйста, введите правильное количество часов для выбранной даты:"
         );
       } else {
         await safeSendMessage(ctx, "Спасибо, вы подтвердили правильность.");

@@ -7,8 +7,10 @@ import { AppDataSource } from "../config/database";
 import { User } from "../entities/User";
 import { Feedback } from "../entities/Feedback";
 import { ExcelUpload } from "../entities/ExcelUpload";
+import { WorkerHours } from "../entities/WorkerHours";
 import { searchRouter } from "./search";
 import { bot } from "../bot/bot";
+import { In } from "typeorm";
 
 const upload = multer({
   dest: "uploads/",
@@ -25,9 +27,6 @@ const upload = multer({
 export function setupRoutes(app: Express) {
   const excelService = new ExcelService();
   const workerService = new WorkerService();
-  const userRepo = AppDataSource.getRepository(User);
-  const feedbackRepo = AppDataSource.getRepository(Feedback);
-  const excelUploadRepo = AppDataSource.getRepository(ExcelUpload);
 
   app.use("/admin/search", searchRouter);
 
@@ -78,13 +77,41 @@ export function setupRoutes(app: Express) {
   // Response to user message
   app.post("/admin/response-user-message", async (req, res) => {
     try {
-      await workerService.updateWorkingHours(req.body.hours, req.body.userId);
-      await workerService.sendByUserId(
-        req.body.userId,
-        req.body.message,
-        req.body.hours
-      );
-      res.status(200).json({ success: true });
+      const workerHoursRepo = AppDataSource.getRepository(WorkerHours);
+      const { userId, workerHoursId, hours, message } = req.body;
+
+      if (workerHoursId) {
+        const record = await workerHoursRepo.findOne({
+          where: { id: workerHoursId, userId },
+        });
+
+        if (!record) {
+          return res.status(404).json({ error: "Worker hours not found" });
+        }
+
+        if (hours !== undefined && hours !== null) {
+          record.hours = Number(hours);
+          await workerHoursRepo.save(record);
+        }
+
+        await workerService.sendByUserId(
+          userId,
+          record.date,
+          message,
+          hours != null ? String(hours) : undefined
+        );
+
+        res.status(200).json({ success: true });
+      } else {
+        await workerService.updateWorkingHours(hours, userId);
+        await workerService.sendByUserId(
+          userId,
+          undefined,
+          message,
+          hours != null ? String(hours) : undefined
+        );
+        res.status(200).json({ success: true });
+      }
     } catch (e) {
       res.status(500).json({ error: "Internal server error" });
     }
@@ -112,6 +139,7 @@ export function setupRoutes(app: Express) {
   // Get all users
   app.get("/admin/users", async (req, res) => {
     try {
+      const userRepo = AppDataSource.getRepository(User);
       const users = await userRepo.find({ order: { name: "ASC" } });
       res.json(users);
     } catch (error) {
@@ -123,6 +151,7 @@ export function setupRoutes(app: Express) {
   // Get all feedbacks
   app.get("/admin/feedbacks", async (req, res) => {
     try {
+      const feedbackRepo = AppDataSource.getRepository(Feedback);
       const feedbacks = await feedbackRepo.find({
         relations: ["user"],
         order: { createdAt: "DESC" },
@@ -137,6 +166,7 @@ export function setupRoutes(app: Express) {
   // Get upload history
   app.get("/admin/uploads", async (req, res) => {
     try {
+      const excelUploadRepo = AppDataSource.getRepository(ExcelUpload);
       const uploads = await excelUploadRepo.find({
         order: { createdAt: "DESC" },
       });
@@ -150,6 +180,8 @@ export function setupRoutes(app: Express) {
   // Get statistics
   app.get("/admin/stats", async (req, res) => {
     try {
+      const userRepo = AppDataSource.getRepository(User);
+      const feedbackRepo = AppDataSource.getRepository(Feedback);
       const totalUsers = await userRepo.count();
       const linkedUsers = await userRepo.count({ where: { isLinked: true } });
       const todayFeedbacks = await feedbackRepo.count({
@@ -224,9 +256,103 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  // Top 10 workers by hours for current week
+  app.get("/admin/stats/top-weekly", async (req, res) => {
+    try {
+      const workerHoursRepo = AppDataSource.getRepository(WorkerHours);
+      const userRepo = AppDataSource.getRepository(User);
+      const today = new Date();
+      const currentDay = today.getDay();
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - currentDay + (currentDay === 0 ? -6 : 1));
+      startOfWeek.setHours(0, 0, 0, 0);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+
+      const result = await workerHoursRepo
+        .createQueryBuilder("wh")
+        .select("wh.userId", "userId")
+        .addSelect("SUM(wh.hours)", "totalHours")
+        .where("wh.date BETWEEN :start AND :end", { start: startOfWeek, end: endOfWeek })
+        .groupBy("wh.userId")
+        .orderBy("totalHours", "DESC")
+        .limit(10)
+        .getRawMany();
+
+      const users = await userRepo.findBy({ id: In(result.map(r => r.userId)) });
+      const data = result.map(r => {
+        const user = users.find(u => u.id === r.userId);
+        return { user, totalHours: Number(r.totalHours) };
+      });
+
+      res.json(data);
+    } catch (error) {
+      console.error("Get weekly top error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Top 10 workers by hours for current month
+  app.get("/admin/stats/top-monthly", async (req, res) => {
+    try {
+      const workerHoursRepo = AppDataSource.getRepository(WorkerHours);
+      const userRepo = AppDataSource.getRepository(User);
+      const today = new Date();
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const result = await workerHoursRepo
+        .createQueryBuilder("wh")
+        .select("wh.userId", "userId")
+        .addSelect("SUM(wh.hours)", "totalHours")
+        .where("wh.date BETWEEN :start AND :end", { start: startOfMonth, end: endOfMonth })
+        .groupBy("wh.userId")
+        .orderBy("totalHours", "DESC")
+        .limit(10)
+        .getRawMany();
+
+      const users = await userRepo.findBy({ id: In(result.map(r => r.userId)) });
+      const data = result.map(r => {
+        const user = users.find(u => u.id === r.userId);
+        return { user, totalHours: Number(r.totalHours) };
+      });
+
+      res.json(data);
+    } catch (error) {
+      console.error("Get monthly top error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Total hours per month
+  app.get("/admin/stats/monthly-total", async (req, res) => {
+    try {
+      const workerHoursRepo = AppDataSource.getRepository(WorkerHours);
+      const result = await workerHoursRepo
+        .createQueryBuilder("wh")
+        .select("DATE_TRUNC('month', wh.date)", "month")
+        .addSelect("SUM(wh.hours)", "totalHours")
+        .groupBy("month")
+        .orderBy("month", "ASC")
+        .getRawMany();
+
+      const data = result.map(r => ({
+        month: r.month,
+        totalHours: Number(r.totalHours),
+      }));
+
+      res.json(data);
+    } catch (error) {
+      console.error("Get monthly total error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Disconnect Telegram ID from all users with that Telegram ID
   app.post("/admin/disconnect-telegram", async (req, res) => {
     try {
+      const userRepo = AppDataSource.getRepository(User);
       const { telegramId } = req.body;
 
       if (!telegramId) {

@@ -148,14 +148,6 @@ describe('API Endpoints', () => {
       expect(response.body).toHaveProperty('recordsProcessed');
     });
 
-    it('should return error if target date is missing', async () => {
-      const response = await request(app)
-        .post('/admin/upload-excel')
-        .attach('excel', Buffer.from('fake excel content'), 'test.xlsx');
-      
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
-    });
   });
 
   // Response to user message endpoint

@@ -296,6 +296,24 @@ export class WorkerService {
     }
   }
 
+  async updateWorkingHoursById(hours: string, workerHoursId: number) {
+    try {
+      const record = await this.workerHoursRepo.findOne({
+        where: { id: workerHoursId },
+      });
+
+      if (!record) {
+        return { success: false, message: "Not Found" };
+      }
+
+      record.hours = Number(hours);
+      await this.workerHoursRepo.save(record);
+      return { success: true, message: "Working Hours saved successfully", record };
+    } catch (error) {
+      return { success: false, message: "Error update hours " + error };
+    }
+  }
+
   async sendFiveDaysStats(): Promise<{
     success: boolean;
     message: string;
