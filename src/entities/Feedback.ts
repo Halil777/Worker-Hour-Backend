@@ -1,42 +1,55 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { User } from './User';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from "typeorm";
+import { User } from "./User";
+import { WorkerHours } from "./WorkerHours";
 
 export enum FeedbackAction {
-    LOGOUT = 'LOGOUT',
-    INCORRECT_TIME = 'INCORRECT_TIME'
+  LOGOUT = "LOGOUT",
+  INCORRECT_TIME = "INCORRECT_TIME",
 }
 
-@Entity('feedbacks')
+@Entity("feedbacks")
 export class Feedback {
-    @PrimaryGeneratedColumn()
-    id: number;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-    @Column()
-    userId: number;
+  @Column()
+  userId: number;
 
-    @Column()
-    workerHoursId: number;
+  @Column()
+  workerHoursId: number;
 
-    @Column('text')
-    message: string;
+  @Column("text")
+  message: string;
 
-    @Column()
-    telegramUserId: string;
+  @Column()
+  telegramUserId: string;
 
-    @Column({ default: false })
-    adminNotified: boolean;
+  @Column({ default: false })
+  adminNotified: boolean;
 
-    @Column({
-        type: 'enum',
-        enum: FeedbackAction,
-        default: FeedbackAction.INCORRECT_TIME
-    })
-    action: FeedbackAction;
+  @Column({
+    type: "enum",
+    enum: FeedbackAction,
+    default: FeedbackAction.INCORRECT_TIME,
+  })
+  action: FeedbackAction;
 
-    @CreateDateColumn()
-    createdAt: Date;
+  @CreateDateColumn()
+  createdAt: Date;
 
-    @ManyToOne(() => User, user => user.feedbacks)
-    @JoinColumn({ name: 'userId' })
-    user: User;
+  @ManyToOne(() => User, (user) => user.feedbacks)
+  @JoinColumn({ name: "userId" })
+  user: User;
+
+  // 🔥 täze relation
+  @ManyToOne(() => WorkerHours, (wh) => wh.feedbacks, { eager: true })
+  @JoinColumn({ name: "workerHoursId" })
+  workerHours: WorkerHours;
 }

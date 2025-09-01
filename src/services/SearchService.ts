@@ -247,7 +247,7 @@ export class SearchService {
       // .leftJoinAndSelect("f.workerHours", "wh")
       // but using raw joins also works:
       .leftJoinAndSelect(User, "u", "u.id = f.userId")
-      .leftJoinAndSelect(WorkerHours, "wh", "wh.id = f.workerHoursId")
+      .leftJoinAndSelect(WorkerHours, "wh", "wh.id = f.")
       .where("1=1");
 
     if (q && q.length > 0) {
