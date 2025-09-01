@@ -1,0 +1,128 @@
+# Worker Hours API Tests
+# This file contains HTTP requests for testing the Worker Hours API
+# You can use this file with REST Client extension in VS Code or similar tools
+
+@baseUrl = http://localhost:3007
+@adminUrl = {{baseUrl}}/admin
+@contentType = application/json
+
+### Variables
+# You can change these values as needed
+@userId = 1
+@targetDate = 2025-08-29
+@startDate = 2023-01-01
+@endDate = 2023-01-31
+@searchQuery = Zik
+@page = 1
+@limit = 10
+
+### Health Check
+# Tests if the API is running
+GET {{baseUrl}}/health
+Accept: {{contentType}}
+
+### Admin Endpoints
+
+## User Management
+
+### Get All Users
+# Returns a list of all users
+GET {{adminUrl}}/users
+Accept: {{contentType}}
+
+## Feedback Management
+
+### Get All Feedbacks
+# Returns a list of all user feedbacks
+GET {{adminUrl}}/feedbacks
+Accept: {{contentType}}
+
+## Excel Upload
+
+### Upload Excel File with Target Date
+# Uploads an Excel file with worker hours data for specific date
+# Note: This requires a multipart/form-data request with an Excel file
+POST {{adminUrl}}/upload-excel
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="targetDate"
+
+{{targetDate}}
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="excel"; filename="test.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< 111-Sablon 01.08.2025 (1).xlsx
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### Upload Excel File without Target Date (uses current date)
+# Uploads an Excel file with worker hours data, defaults to current date
+# Note: This requires a multipart/form-data request with an Excel file
+POST {{adminUrl}}/upload-excel
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="excel"; filename="test.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< 111-Sablon 01.08.2025 (1).xlsx
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### Get Upload History
+# Returns a list of all Excel file uploads
+GET {{adminUrl}}/uploads
+Accept: {{contentType}}
+
+## Worker Hours Management
+
+### Send Response to User Message
+# Sends a response to a user message and updates their working hours
+POST {{adminUrl}}/response-user-message
+Content-Type: {{contentType}}
+
+{
+  "userId": {{userId}},
+  "message": "Your working hours have been updated",
+  "hours": 8
+}
+
+### Send Daily Hours to All Workers
+# Manually triggers sending daily hours to all workers
+POST {{adminUrl}}/send-daily-hours
+Content-Type: {{contentType}}
+
+### Get Worker Hours List
+# Returns a paginated list of worker hours with optional search
+GET {{adminUrl}}/worker-hours?page={{page}}&limit={{limit}}&search={{searchQuery}}
+Accept: {{contentType}}
+
+### Get Sum of Working Hours
+# Returns the sum of working hours for each user within a date range
+GET {{adminUrl}}/user-hours-sum?startDate={{startDate}}&endDate={{endDate}}
+Accept: {{contentType}}
+
+## Statistics
+
+### Get Statistics
+# Returns general statistics about users and feedbacks
+GET {{adminUrl}}/stats
+Accept: {{contentType}}
+
+## Search
+
+### Global Search
+# Performs a global search across the system
+GET {{adminUrl}}/search/global?q={{searchQuery}}&dateFrom={{startDate}}&dateTo={{endDate}}&page={{page}}&limit={{limit}}
+Accept: {{contentType}}
+
+
+### LOGOUT
+POST {{adminUrl}}/disconnect-telegram
+Content-Type: {{contentType}}
+
+{
+  "telegramId": 1859646752
+}
+
+
