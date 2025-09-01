@@ -56,6 +56,7 @@ export class ExcelService {
 
       // Remove old entries for that date
       await this.workerHoursRepo.delete({ date: selectedDate });
+      await this.excelUploadRepo.delete({ uploadDate: selectedDate });
 
       let recordsProcessed = 0;
 

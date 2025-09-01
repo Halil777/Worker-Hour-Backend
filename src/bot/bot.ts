@@ -6,6 +6,9 @@ import { WorkerHours } from "../entities/WorkerHours";
 import { ILike } from "typeorm";
 import { WorkerService } from "../services/WorkerService";
 
+import { EmailService } from "../services/EmailService";
+const emailService = new EmailService();
+
 const BOT_TOKEN = process.env.BOT_TOKEN || "REPLACE_WITH_YOUR_TOKEN";
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -313,6 +316,7 @@ export async function botSetup() {
       feedback.action = FeedbackAction.INCORRECT_TIME;
 
       await feedbackRepo.save(feedback);
+      await emailService.sendFeedbackNotification(feedback, user, workerHours);
 
       global.io.emit("newFeedback", {
         id: feedback.id,
@@ -361,6 +365,7 @@ export async function botSetup() {
           : FeedbackAction.LOGOUT;
 
       await feedbackRepo.save(feedback);
+      await emailService.sendFeedbackNotification(feedback, user);
 
       // Notify admin via socket.io
       global.io.emit("newFeedback", {
@@ -634,6 +639,20 @@ export async function botSetup() {
         return;
       }
 
+    if (data.startsWith("month_")) {
+      const [, monthStr, yearStr] = data.split("_");
+      const m = parseInt(monthStr, 10);
+      const y = parseInt(yearStr, 10);
+      const user = await userRepo.findOne({ where: { telegramId } });
+      if (!user) {
+        await ctx.reply("Сначала вам нужно привязать аккаунт. Напишите /start.");
+        return;
+      }
+      await safeAnswerCbQuery(ctx);
+      await workerService.sendMonthHours(user.id, m, y);
+      return;
+    }
+
       await safeAnswerCbQuery(ctx);
 
       console.log("action:", action);
@@ -718,6 +737,20 @@ export async function botSetup() {
           );
       }
 
+      return;
+    }
+
+    if (data.startsWith("month_")) {
+      const [, monthStr, yearStr] = data.split("_");
+      const m = parseInt(monthStr, 10);
+      const y = parseInt(yearStr, 10);
+      const user = await userRepo.findOne({ where: { telegramId } });
+      if (!user) {
+        await ctx.reply("Сначала вам нужно привязать аккаунт. Напишите /start.");
+        return;
+      }
+      await safeAnswerCbQuery(ctx);
+      await workerService.sendMonthHours(user.id, m, y);
       return;
     }
 
@@ -922,6 +955,7 @@ export async function botSetup() {
         feedback.action = FeedbackAction.LOGOUT;
 
         await feedbackRepo.save(feedback);
+        await emailService.sendFeedbackNotification(feedback, user);
 
         // Notify admin via socket.io
         global.io.emit("newFeedback", {

@@ -10,7 +10,7 @@ import { ExcelUpload } from "../entities/ExcelUpload";
 import { WorkerHours } from "../entities/WorkerHours";
 import { searchRouter } from "./search";
 import { bot } from "../bot/bot";
-import { In } from "typeorm";
+import { In, Between } from "typeorm";
 
 const upload = multer({
   dest: "uploads/",
@@ -167,9 +167,25 @@ export function setupRoutes(app: Express) {
   app.get("/admin/uploads", async (req, res) => {
     try {
       const excelUploadRepo = AppDataSource.getRepository(ExcelUpload);
-      const uploads = await excelUploadRepo.find({
-        order: { createdAt: "DESC" },
-      });
+      const { month } = req.query as { month?: string };
+      let uploads;
+
+      if (month) {
+        const [year, m] = month.split("-").map(Number);
+        if (!year || !m) {
+          return res.status(400).json({ error: "Invalid month format. Use YYYY-MM." });
+        }
+        const start = new Date(year, m - 1, 1);
+        const end = new Date(year, m, 0, 23, 59, 59, 999);
+        uploads = await excelUploadRepo.find({
+          where: { uploadDate: Between(start, end) },
+          order: { createdAt: "DESC" },
+        });
+      } else {
+        uploads = await excelUploadRepo.find({
+          order: { createdAt: "DESC" },
+        });
+      }
       res.json(uploads);
     } catch (error) {
       console.error("Get uploads error:", error);
